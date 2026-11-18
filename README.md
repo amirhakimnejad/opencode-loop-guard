@@ -20,6 +20,9 @@ The model gets an error telling it to use the result it already has, take a
 different step, or ask the user. It's never blocked when:
 
 - the result changes between runs (polling until something finishes works), or
+- a file was edited since (`edit`, `write`, `patch` and similar tools start the
+  count over, so "edit, re-run the tests, same failure, edit again" keeps
+  working), or
 - the shell command waits or polls (`sleep`, `wait`, `watch`, `*_status`,
   `unity … status`).
 

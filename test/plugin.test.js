@@ -117,3 +117,38 @@ test("memory stays bounded across many sessions", async () => {
   await run("bash", { command: "ls" }, "x", { sessionID: "s0" })
   assert.equal(await run("bash", { command: "ls" }, "x", { sessionID: "s0" }), "ran")
 })
+
+test("re-running the same failing test after each edit is not blocked", async () => {
+  const run = await host()
+  const fail = "FAIL: expected 2, got 3"
+  for (let i = 0; i < 4; i++) {
+    assert.equal(await run("bash", { command: "npm test" }, fail), "ran", "test run " + i)
+    assert.equal(await run("edit", { filePath: "a.js", oldString: "v" + i, newString: "v" + (i + 1) }, "ok"), "ran")
+  }
+})
+
+test("the same edit repeated with the same result is still blocked", async () => {
+  const run = await host()
+  const edit = { filePath: "a.js", oldString: "x", newString: "y" }
+  await run("edit", edit, "no match")
+  await run("edit", edit, "no match")
+  assert.match(await run("edit", edit, "no match"), /^BLOCKED/)
+})
+
+test("write, patch and namespaced edit tools also count as file changes", async () => {
+  for (const tool of ["write", "patch", "apply_patch", "multiedit", "serena_edit"]) {
+    const run = await host()
+    await run("bash", { command: "npm test" }, "fail")
+    await run("bash", { command: "npm test" }, "fail")
+    await run(tool, { filePath: "a.js", content: tool }, "ok")
+    assert.equal(await run("bash", { command: "npm test" }, "fail"), "ran", tool)
+  }
+})
+
+test("tools that only mention editing in their name don't reset the count", async () => {
+  const run = await host()
+  await run("bash", { command: "ls" })
+  await run("bash", { command: "ls" })
+  await run("editor_status", {}, "idle")
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED/)
+})

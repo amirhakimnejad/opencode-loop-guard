@@ -6,6 +6,8 @@
 //   - twice more among the last 10 calls (an A, B, A, B, A loop).
 // A repeat whose result changes is allowed, so polling until something is done
 // still works, and shell commands that wait or poll a status are never blocked.
+// A file edit starts the count over for every other call, so "edit, re-run the
+// tests, same failure, edit again, re-run" is never blocked.
 // The model gets an error telling it to change approach or ask the user.
 // Remove it from your plugin list (or delete the file) to turn it off.
 
@@ -47,6 +49,13 @@ function signature(call) {
   return hash(call.tool + "\u0000" + text(input))
 }
 
+// Tools that change files. After one runs, earlier results of other calls may be stale.
+const WRITE_TOOL = /(^|[_.-])(edit|multiedit|write|patch|apply_patch)$/i
+
+function isWrite(call) {
+  return typeof call.tool === "string" && WRITE_TOOL.test(call.tool)
+}
+
 function isPoll(call) {
   const command = call.input && typeof call.input === "object" ? call.input.command : undefined
   return typeof command === "string" && POLL.test(command)
@@ -62,7 +71,10 @@ export function createPlugin() {
   const blocked = new Set() // ids of calls this guard refused
 
   function remember(sessionID, entry) {
-    const recent = runs.get(sessionID) ?? []
+    let recent = runs.get(sessionID) ?? []
+    // Files changed: forget the other calls, but keep earlier edits so an edit
+    // repeated with the same result can still be caught.
+    if (entry.write) recent = recent.filter((r) => r.write)
     runs.delete(sessionID) // re-insert so the most recently active session is last
     recent.push(entry)
     if (recent.length > WINDOW) recent.shift()
@@ -97,7 +109,7 @@ export function createPlugin() {
 
       await ctx.tool.hook("execute.after", (call) => {
         if (blocked.delete(call.id)) return
-        remember(call.sessionID, { sig: signature(call), out: resultKey(call) })
+        remember(call.sessionID, { sig: signature(call), out: resultKey(call), write: isWrite(call) })
       })
     },
   }
