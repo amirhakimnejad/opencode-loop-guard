@@ -1,0 +1,13 @@
+{
+  "name": "opencode-loop-guard",
+  "version": "0.1.0",
+  "description": "OpenCode plugin that stops a model from repeating the same tool call over and over",
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js" },
+  "files": ["index.js", "README.md", "LICENSE"],
+  "scripts": { "test": "node --test" },
+  "keywords": ["opencode", "opencode-plugin", "agent", "loop"],
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}
