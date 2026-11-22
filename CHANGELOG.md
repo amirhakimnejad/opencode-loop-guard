@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-22)
 
 - Blocks a tool call repeated with the same input and the same result (twice in a row, or in an A, B, A, B, A loop).
 - Polling commands are never blocked, and a file edit starts the count over.
