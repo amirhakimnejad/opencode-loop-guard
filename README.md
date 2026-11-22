@@ -37,7 +37,7 @@ Fields that don't change what a call does (`description`, `timeout`, `title`,
 Add it to `opencode.json`:
 
 ```json
-{ "plugin": ["opencode-loop-guard@0.1.0"] }
+{ "plugins": ["opencode-loop-guard"] }
 ```
 
 or copy `index.js` to `~/.config/opencode/plugins/loop-guard.js`. Restart
