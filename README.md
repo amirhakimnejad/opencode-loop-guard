@@ -1,5 +1,7 @@
 # opencode-loop-guard
 
+[![npm](https://img.shields.io/npm/v/opencode-loop-guard)](https://www.npmjs.com/package/opencode-loop-guard)
+
 An [OpenCode](https://opencode.ai) 2.x plugin that stops a model from running
 the same tool call over and over.
 
