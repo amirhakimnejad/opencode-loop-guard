@@ -17,7 +17,10 @@ the same result:
 - twice more among the last 10 calls (an A, B, A, B, A loop).
 
 The model gets an error telling it to use the result it already has, take a
-different step, or ask the user. It's never blocked when:
+different step, or ask the user. If it sends a blocked call 3 times in a row
+anyway, the guard ends the turn (OpenCode's `session.interrupt`), so a stuck
+model stops and waits for you instead of retrying for half an hour. Any call
+that runs resets that count. It's never blocked when:
 
 - the result changes between runs (polling until something finishes works), or
 - a file was edited since (`edit`, `write`, `patch` and similar tools start the

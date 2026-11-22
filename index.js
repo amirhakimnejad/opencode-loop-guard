@@ -8,12 +8,15 @@
 // still works, and shell commands that wait or poll a status are never blocked.
 // A file edit starts the count over for every other call, so "edit, re-run the
 // tests, same failure, edit again, re-run" is never blocked.
-// The model gets an error telling it to change approach or ask the user.
+// The model gets an error telling it to change approach or ask the user. If it
+// keeps sending blocked calls (3 in a row), the guard ends the turn, so a stuck
+// model stops and waits for the user instead of retrying for half an hour.
 // Remove it from your plugin list (or delete the file) to turn it off.
 
 import { createHash } from "node:crypto"
 
 const WINDOW = 10 // calls remembered per session
+const STOP_AFTER = 3 // blocked calls in a row before the turn is ended
 const MAX_SESSIONS = 200 // sessions remembered at once (least recently active dropped first)
 // Shell commands that may legitimately repeat with the same output while waiting:
 // sleep/wait/watch, *_status commands, and `unity ... status` (Editor, test, job).
@@ -69,6 +72,7 @@ function resultKey(call) {
 export function createPlugin() {
   const runs = new Map() // sessionID -> [{ sig, out }]
   const blocked = new Set() // ids of calls this guard refused
+  const strikes = new Map() // sessionID -> blocked calls in a row
 
   function remember(sessionID, entry) {
     let recent = runs.get(sessionID) ?? []
@@ -85,6 +89,15 @@ export function createPlugin() {
   return {
     id: "loop-guard",
     async setup(ctx) {
+      // Ends the session's current turn, after the refused call has been reported.
+      const interrupt = typeof ctx.session?.interrupt === "function"
+        ? (sessionID) => setTimeout(() => {
+            try {
+              Promise.resolve(ctx.session.interrupt({ sessionID })).catch(() => {})
+            } catch {}
+          }, 0)
+        : undefined
+
       await ctx.tool.hook("execute.before", (call) => {
         if (isPoll(call)) return
         const sig = signature(call)
@@ -97,6 +110,21 @@ export function createPlugin() {
         // opencode 2.1 doesn't run execute.after for a call refused here; keep the set from growing anyway.
         if (blocked.size > 1000) blocked.clear()
         blocked.add(call.id)
+        const strike = (strikes.get(call.sessionID) ?? 0) + 1
+        strikes.set(call.sessionID, strike)
+        if (strikes.size > MAX_SESSIONS) strikes.delete(strikes.keys().next().value)
+        if (strike >= STOP_AFTER && interrupt) {
+          strikes.delete(call.sessionID)
+          interrupt(call.sessionID)
+          throw new Error(
+            "loop-guard stopped this turn: you sent a call it had already blocked " +
+              strike +
+              " times in a row (" +
+              call.tool +
+              " with the same input and the same result). Don't run it again. " +
+              "When the user writes next, say what you were trying to do, what the repeated call returned, and ask one short question.",
+          )
+        }
         throw new Error(
           "loop-guard blocked this call: you already ran this exact " +
             call.tool +
@@ -109,6 +137,7 @@ export function createPlugin() {
 
       await ctx.tool.hook("execute.after", (call) => {
         if (blocked.delete(call.id)) return
+        strikes.delete(call.sessionID)
         remember(call.sessionID, { sig: signature(call), out: resultKey(call), write: isWrite(call) })
       })
     },

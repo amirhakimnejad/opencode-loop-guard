@@ -152,3 +152,61 @@ test("tools that only mention editing in their name don't reset the count", asyn
   await run("editor_status", {}, "idle")
   assert.match(await run("bash", { command: "ls" }), /^BLOCKED/)
 })
+
+async function hostWithInterrupt() {
+  const hooks = {}
+  const interrupted = []
+  await createPlugin().setup({
+    tool: { hook: async (name, fn) => { hooks[name] = fn } },
+    session: { interrupt: async (input) => { interrupted.push(input) } },
+  })
+  let id = 0
+  async function run(tool, input, result = "same output", sessionID = "s1") {
+    const call = { id: "call" + ++id, sessionID, tool, input }
+    try {
+      await hooks["execute.before"](call)
+    } catch (e) {
+      return "BLOCKED: " + e.message
+    }
+    await hooks["execute.after"]({ ...call, status: "completed", result: { output: result } })
+    return "ran"
+  }
+  return { run, interrupted }
+}
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+
+test("a third blocked call in a row ends the turn", async () => {
+  const { run, interrupted } = await hostWithInterrupt()
+  await run("bash", { command: "ls" })
+  await run("bash", { command: "ls" })
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED: loop-guard blocked/)
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED: loop-guard blocked/)
+  await tick()
+  assert.deepEqual(interrupted, [])
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED: loop-guard stopped this turn/)
+  await tick()
+  assert.deepEqual(interrupted, [{ sessionID: "s1" }])
+})
+
+test("a call that runs resets the blocked-in-a-row count", async () => {
+  const { run, interrupted } = await hostWithInterrupt()
+  await run("bash", { command: "ls" })
+  await run("bash", { command: "ls" })
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED/)
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED/)
+  assert.equal(await run("bash", { command: "pwd" }), "ran")
+  assert.match(await run("bash", { command: "ls" }), /^BLOCKED: loop-guard blocked/)
+  await tick()
+  assert.deepEqual(interrupted, [])
+})
+
+test("blocked counts are kept per session", async () => {
+  const { run, interrupted } = await hostWithInterrupt()
+  for (const s of ["a", "b"]) { await run("bash", { command: "ls" }, "x", s); await run("bash", { command: "ls" }, "x", s) }
+  assert.match(await run("bash", { command: "ls" }, "x", "a"), /^BLOCKED: loop-guard blocked/)
+  assert.match(await run("bash", { command: "ls" }, "x", "b"), /^BLOCKED: loop-guard blocked/)
+  assert.match(await run("bash", { command: "ls" }, "x", "a"), /^BLOCKED: loop-guard blocked/)
+  await tick()
+  assert.deepEqual(interrupted, [])
+})
